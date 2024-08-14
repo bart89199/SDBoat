@@ -1,0 +1,5 @@
+name: SDBoat
+version: '${version}'
+main: ru.batr.sdboat.SDBoat
+api-version: '1.19'
+authors: [batr]
