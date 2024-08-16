@@ -1,5 +1,3 @@
-package ru.batr.shinedungeons
-
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver
@@ -39,7 +37,6 @@ object TextFormatter {
         serializer: MiniMessage = DEFAULT_SERIALIZER,
     ): List<String> {
         val output = ArrayList<String>();
-
         for (i in input) {
             output.add(serializer.serialize(i))
         }

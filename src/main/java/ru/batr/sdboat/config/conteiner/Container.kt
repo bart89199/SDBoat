@@ -1,17 +1,27 @@
-package ru.batr.shinedungeons.configs.containers
+package ru.batr.sdboat.config.conteiner
 
-import com.google.common.graph.Graph
+import TextFormatter
+import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.OfflinePlayer
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.inventory.ItemStack
-import ru.batr.shinedungeons.configs.Config
-import ru.batr.shinedungeons.configs.containers.Container.Converter
-import ru.batr.shinedungeons.configs.containers.Container.Saver
+import ru.batr.sdboat.config.Config
+import ru.batr.sdboat.config.conteiner.Container.Converter
+import ru.batr.sdboat.config.conteiner.Container.Saver
+import kotlin.reflect.KProperty
 
 interface Container<T> {
 
     var value: T
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        return value
+    }
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+        this.value = value
+    }
 
     fun interface Converter<T> {
         fun toT(value: Any?): T?
@@ -21,12 +31,12 @@ interface Container<T> {
         fun save(value: T, path: String, config: Config)
     }
 
-    open class DefaultContainer<T>(
+    open class ConfigContainer<T>(
         val config: Config,
         val path: String,
         val default: T,
         val converter: Converter<T>,
-        val saver: Saver<T> = defaultSaver()
+        val saver: Saver<T> = defaultConfigSaver()
     ) : Container<T> {
         override var value: T
             get() {
@@ -36,12 +46,12 @@ interface Container<T> {
             set(value) = saver.save(value, path, config)
     }
 
-    open class ListContainer<T> (
+    open class ListContainer<T>(
         val config: Config,
         val path: String,
         val default: List<T>,
         val converter: Converter<T>,
-        val saver: Saver<List<T>> = defaultSaver(),
+        val saver: Saver<List<T>> = defaultConfigSaver(),
     ) : Container<List<T>> {
         override var value: List<T>
             get() {
@@ -53,23 +63,27 @@ interface Container<T> {
                 return output
             }
             set(value) = saver.save(value, path, config)
+
         fun add(value: T) {
             val list = this.value.toMutableList()
             list.add(value)
-            
+
             this.value = list
         }
+
         fun set(index: Int, value: T) {
             val list = this.value.toMutableList()
             list[index] = value
             this.value = list
         }
+
         fun remove(value: T): Boolean {
             val list = this.value.toMutableList()
             val res = list.remove(value)
             this.value = list
             return res
         }
+
         fun removeAt(index: Int): T {
             val list = this.value.toMutableList()
             val res = list.removeAt(index)
@@ -79,7 +93,7 @@ interface Container<T> {
 
     }
 
-    open class MapContainer<T> (
+    open class MapContainer<T>(
         val config: Config,
         val path: String,
         val default: Map<String, T>,
@@ -105,17 +119,20 @@ interface Container<T> {
                 } else default
             }
             set(value) = saver.save(value, path, config)
+
         fun set(key: String, value: T) {
             val map = this.value.toMutableMap()
             map[key] = value
             this.value = map
         }
+
         fun remove(key: String): T? {
             val map = this.value.toMutableMap()
             val res = map.remove(key)
             this.value = map
             return res
         }
+
         fun remove(key: String, value: T): Boolean {
             val map = this.value.toMutableMap()
             val res = map.remove(key, value)
@@ -125,7 +142,7 @@ interface Container<T> {
     }
 
     companion object {
-        fun <T> defaultSaver() = Saver<T> { value, path1, config1 ->
+        fun <T> defaultConfigSaver() = Saver<T> { value, path1, config1 ->
             config1.config.set(path1, value)
             config1.save()
         }
@@ -138,9 +155,15 @@ interface Container<T> {
         val toLong = Converter { input: Any? -> if (input is Number) input.toLong() else null }
         val toBoolean = Converter { input: Any? -> if (input is Boolean) input else null }
         val toString = Converter { input: Any? -> input?.toString() }
+        val toComponent = Converter { input: Any? -> TextFormatter.format(input.toString()) }
         val toItemStack = Converter { input: Any? -> if (input is ItemStack) input else null }
         val toLocation = Converter { input: Any? -> if (input is Location) input else null }
         val toOfflinePlayer = Converter { input: Any? -> if (input is OfflinePlayer) input else null }
+
+        val componentSaver = Saver { value: Component, path, config ->
+            config.config.set(path, TextFormatter.format(value))
+            config.save()
+        }
 
         fun <T> toList(converter: Converter<T>) = Converter { input: Any? ->
             if (input is List<*>) {
@@ -169,7 +192,7 @@ interface Container<T> {
             } else null
         }
 
-        fun <T> saveMap(saver: Saver<T> = defaultSaver()) =
+        fun <T> saveMap(saver: Saver<T> = defaultConfigSaver()) =
             Saver { map: Map<String, T>, path: String, config: Config ->
                 config.config.set(path, null)
                 for ((k, v) in map) {

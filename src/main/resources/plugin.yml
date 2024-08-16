@@ -1,5 +1,19 @@
 name: SDBoat
+description: Boat race plugin
 version: '${version}'
 main: ru.batr.sdboat.SDBoat
 api-version: '1.19'
 authors: [batr]
+database: true
+commands:
+  boatrace:
+    aliases:
+      - race
+    description: Boat race command
+  boatracemanage:
+    aliases:
+      - boatmanage
+      - racemanage
+    description: Manage boat race command
+    permission: sdboat.admin
+    permission-message: You have not permission for this
