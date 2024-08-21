@@ -1,4 +1,4 @@
-package racemap
+package ru.batr.sdboat.racemap
 
 import kotlinx.serialization.Serializable
 

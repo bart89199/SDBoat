@@ -10,6 +10,7 @@ commands:
     aliases:
       - race
     description: Boat race command
+    permission: sdboat.player
   boatracemanage:
     aliases:
       - boatmanage
@@ -17,3 +18,9 @@ commands:
     description: Manage boat race command
     permission: sdboat.admin
     permission-message: You have not permission for this
+permissions:
+  sdboat.player:
+    default: true
+  sdboat.admin:
+    default: op
+    children: [sdboat.player]

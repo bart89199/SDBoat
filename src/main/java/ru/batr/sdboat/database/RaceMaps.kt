@@ -1,7 +1,7 @@
-package database
+package ru.batr.sdboat.database
 
 import kotlinx.serialization.json.Json
-import racemap.RaceMap
+import ru.batr.sdboat.racemap.RaceMap
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.json.json
 

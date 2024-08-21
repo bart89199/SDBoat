@@ -1,10 +1,10 @@
-package database
+package ru.batr.sdboat.database
 
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
-import racemap.RaceMap
+import ru.batr.sdboat.racemap.RaceMap
 import ru.batr.sdboat.SDBoat
 import java.io.File
 
