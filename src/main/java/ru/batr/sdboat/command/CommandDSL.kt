@@ -8,6 +8,8 @@ import org.bukkit.command.CommandSender
 import org.bukkit.command.PluginCommand
 import org.bukkit.command.TabExecutor
 import ru.batr.sdboat.SDBoat
+import ru.batr.sdboat.SDBoat.Companion.adventure
+import ru.batr.sdboat.SDBoat.Companion.sendMessage
 import kotlin.reflect.KProperty
 
 @DslMarker
@@ -17,7 +19,7 @@ annotation class CommandMarker
  * Represent onTabComplete and onCommand data with [curArgs] that represents current arguments
  */
 data class CommandData(
-    val sender: Audience,
+    val sender: CommandSender,
     val command: Command,
     val label: String,
     val curArgs: List<String>,
@@ -35,7 +37,7 @@ fun interface Action {
      */
     fun execute(commandData: CommandData): Boolean
 }
-
+//TODO rewrite
 fun interface TabAction : Action
 
 /**
@@ -88,7 +90,7 @@ abstract class TabArgument(ignoringInnerExit: Boolean = false) :
         val list = ArrayList<String>()
         for (action in actions) {
             if (action is TabAction) {
-                action.execute(newData)
+                if (action.execute(commandData)) return mutableListOf("Где-то ошибка!") to true
             }
             if (action is TabHolder) {
                 list.addAll(action.onTabComplete(newData).also { if (it.second) return it }.first)
@@ -240,7 +242,7 @@ abstract class AbstractInputListArgument<T>(
             if (newArgs.isEmpty()) return tabListContent(commandData)
             if (openSeparator == " ") {
                 if (closeSeparator == " ")
-                    return tabListContent(commandData).filter { it.startsWith(commandData.curArgs[0]) }.toMutableList()
+                    return tabListContent(commandData, commandData.curArgs[0]).filter { it.startsWith(commandData.curArgs[0]) }.toMutableList()
             } else {
                 if (!newArgs[0].startsWith(openSeparator)) return tabListContent(commandData).map { openSeparator + it }
                     .toMutableList().also { if (it.isEmpty()) return mutableListOf(openSeparator) }
@@ -264,7 +266,7 @@ abstract class AbstractInputListArgument<T>(
                 }
             }
             if (args.isEmpty()) return tabListContent(commandData).map { commandData.args.last() + it }.toMutableList()
-            val advices = tabListContent(commandData).filter {
+            val advices = tabListContent(commandData, args.last()).filter {
                 if (removeArgAdviceIfUsed && args.contains(it)) {
                     args.remove(it)
                     false
@@ -276,12 +278,15 @@ abstract class AbstractInputListArgument<T>(
                     if (range == null || args.size != range.last) advices.add(separators.first())
                     if (range == null || args.size >= range.first) advices.add(closeSeparator)
                 }
-                return advices.map { commandData.args.last() + it }.toMutableList()
+                return advices.map {
+
+                    commandData.args.last() + if (it.startsWith(args.last())) it.removePrefix(args.last()) else it
+                }.toMutableList()
             } else return mutableListOf("Введённо слишком много аргументов!")
         }
     }
 
-    abstract fun tabListContent(commandData: CommandData): MutableList<String>
+    abstract fun tabListContent(commandData: CommandData, lastArg: String? = null): MutableList<String>
     abstract fun convertElement(string: String): T
 }
 
@@ -295,7 +300,7 @@ class InputListArgument<T>(
     removeArgAdviceIfUsed: Boolean = false,
     sortAdvicesWithTyped: Boolean = true,
     var convertor: (String) -> T,
-    var onTab: CommandData.() -> MutableList<String>,
+    var onTab: CommandData.(lastArg: String?) -> MutableList<String>,
 ) : AbstractInputListArgument<T>(
     openSeparator,
     closeSeparator,
@@ -307,7 +312,7 @@ class InputListArgument<T>(
     sortAdvicesWithTyped
 ) {
     override fun convertElement(string: String): T = convertor(string)
-    override fun tabListContent(commandData: CommandData): MutableList<String> = onTab(commandData)
+    override fun tabListContent(commandData: CommandData, lastArg: String?): MutableList<String> = onTab(commandData, lastArg)
 }
 
 
@@ -339,11 +344,11 @@ class SDCommand(val name: String) : TabExecutor, ActionsHolder {
         args: Array<out String>?
     ): MutableList<String> {
         val argsList = args?.toList() ?: emptyList()
-        val commandData = CommandData(sender as Audience, command, label, argsList, argsList)
+        val commandData = CommandData(sender, command, label, argsList, argsList)
         val list = ArrayList<String>()
         for (action in actions) {
             if (action is TabAction) {
-                action.execute(commandData)
+                if (action.execute(commandData)) return mutableListOf("Где-то ошибка!")
             }
             if (action is TabHolder) {
                 list.addAll(action.onTabComplete(commandData).also { if (it.second) return it.first }.first)
@@ -361,7 +366,7 @@ class SDCommand(val name: String) : TabExecutor, ActionsHolder {
         val argsList = args?.toList() ?: emptyList()
         for (action in actions) {
             if (action is TabAction) continue
-            if (action.execute(CommandData(sender as Audience, command, label, argsList, argsList))) break
+            if (action.execute(CommandData(sender, command, label, argsList, argsList))) break
         }
         return true
     }
@@ -373,12 +378,20 @@ fun ActionsHolder.action(exit: Boolean = false, action: CommandData.() -> Unit) 
     actions.add { action(it); exit }
 }
 
+fun ActionsHolder.action1(action: CommandData.() -> Boolean) {
+    actions.add(action)
+}
+
 fun ActionsHolder.lastAction(action: CommandData.() -> Unit) {
     actions.add { action(it); true }
 }
 
 fun ActionsHolder.tabAction(exit: Boolean = false, action: CommandData.() -> Unit) {
     actions.add(TabAction { action(it); exit })
+}
+
+fun ActionsHolder.tabAction1(action: CommandData.() -> Boolean) {
+    actions.add(TabAction(action))
 }
 
 fun ActionsHolder.lastTabAction(action: CommandData.() -> Unit) {
@@ -403,6 +416,7 @@ fun ActionsHolder.arg(
 }
 
 // TODO Add exception handle support in onExceptionAction
+// TODO Advice as list order
 
 val toString = { input: String ->
     if (input.isBlank()) throw IllegalCommandArgumentException()
@@ -432,7 +446,9 @@ val toBoolean = convertor@{ input: String ->
 }
 
 operator fun String.unaryPlus(): CommandData.() -> MutableList<String> = { mutableListOf(this@unaryPlus) }
+operator fun String.unaryMinus(): CommandData.(lastArg: String?) -> MutableList<String> = { mutableListOf(this@unaryMinus) }
 operator fun Iterable<String>.unaryPlus(): CommandData.() -> MutableList<String> = { this@unaryPlus.toMutableList() }
+operator fun Iterable<String>.unaryMinus(): CommandData.(lastArg: String?) -> MutableList<String> = { this@unaryMinus.toMutableList() }
 
 fun <T> ActionsHolder.input(
     onTab: CommandData.() -> MutableList<String> = +"[ввод]",
@@ -544,7 +560,7 @@ fun ActionsHolder.inputBoolean(
 }
 
 fun <T> ActionsHolder.inputList(
-    onTab: CommandData.() -> MutableList<String> = +"список",
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = -"список",
     argumentRange: IntRange? = null,
     openSeparator: String = "[",
     closeSeparator: String = "]",
@@ -573,7 +589,7 @@ fun <T> ActionsHolder.inputList(
 }
 
 fun ActionsHolder.inputStringList(
-    onTab: CommandData.() -> MutableList<String> = +"имя",
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = -"имя",
     argumentRange: IntRange? = null,
     openSeparator: String = "[",
     closeSeparator: String = "]",
@@ -601,7 +617,7 @@ fun ActionsHolder.inputStringList(
 
 
 fun ActionsHolder.inputComponentList(
-    onTab: CommandData.() -> MutableList<String> = +"имя",
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = -"имя",
     argumentRange: IntRange? = null,
     openSeparator: String = "[",
     closeSeparator: String = "]",
@@ -628,7 +644,7 @@ fun ActionsHolder.inputComponentList(
 }
 
 fun ActionsHolder.inputIntList(
-    onTab: CommandData.() -> MutableList<String> = +"число",
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = -"число",
     argumentRange: IntRange? = null,
     openSeparator: String = "[",
     closeSeparator: String = "]",
@@ -655,7 +671,7 @@ fun ActionsHolder.inputIntList(
 }
 
 fun ActionsHolder.inputDoubleList(
-    onTab: CommandData.() -> MutableList<String> = +"число",
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = -"число",
     argumentRange: IntRange? = null,
     openSeparator: String = "[",
     closeSeparator: String = "]",
@@ -682,7 +698,7 @@ fun ActionsHolder.inputDoubleList(
 }
 
 fun ActionsHolder.inputBooleanList(
-    onTab: CommandData.() -> MutableList<String> = +listOf("да", "нет"),
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = -listOf("да", "нет"),
     argumentRange: IntRange? = null,
     openSeparator: String = "[",
     closeSeparator: String = "]",
