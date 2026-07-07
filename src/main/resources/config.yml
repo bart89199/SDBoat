@@ -32,6 +32,8 @@ topUpdateTime: 120
 lavaBonusTime: 80
 #Сообщение, при выходе за карту
 mapLeave: "<red>Вы вышли за пределы карты!</red>"
+#Сообщение при прохождении круга(плейсходеры: <curround> - пройденый круг, <roundsamount> - всего кругов, <roundtime> - время прохождения этого круга, <time> - всё время)
+finishRoundMessage: "<aqua>Круг <gold><curround></gold><light_gray> / <light_gray><gold><roundsamount></gold> пройден!</aqua>\nВремя прохождения круга: <aqua><roundtime></aqua>\nОбщее время: <aqua><time></aqua>"
 #Сообщение при финише(плейсходеры: <place> - место <time> - вермя(в скундах))
 finishMessage: "<gold>Поздравляю! Ваше место: <aqua><place></aqua>, время: <aqua><time></aqua>! </gold>"
 #Количество призовых мест(места за которые дают победу

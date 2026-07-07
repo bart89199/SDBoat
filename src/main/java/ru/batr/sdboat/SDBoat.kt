@@ -2,8 +2,6 @@ package ru.batr.sdboat
 
 import TextFormatter
 import net.kyori.adventure.audience.Audience
-import net.kyori.adventure.platform.bukkit.BukkitAudiences
-import net.kyori.adventure.platform.bukkit.BukkitComponentSerializer
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
@@ -81,9 +79,6 @@ class SDBoat : JavaPlugin() {
                 }
             }, 0, mainConfig.topUpdateTime * 20L)
         }
-        val adventure by lazy {
-            BukkitAudiences.create(instance)
-        }
         fun Audience.sendMessagePr(component: Component) {
             sendMessage(mainConfig.prefix.append(Component.text(" ")).append(component))
         }
@@ -96,15 +91,9 @@ class SDBoat : JavaPlugin() {
             sendMessage(TextFormatter.format(message))
         }
 
-        fun CommandSender.sendMessage(component: Component) {
-            adventure.sender(this).sendMessage(component)
-        }
 
         fun CommandSender.sendMessagePr(message: String) {
-            adventure.sender(this).sendMessagePr(TextFormatter.format(message))
-        }
-        fun CommandSender.sendMessagePr(component: Component) {
-            adventure.sender(this).sendMessagePr(component)
+            sendMessagePr(TextFormatter.format(message))
         }
         fun spawnNPC(top: TopPlayer, playerUUID: UUID, cords: ExactCoordinates, world: World, place: Int) {
             val loc = +cords
@@ -113,36 +102,36 @@ class SDBoat : JavaPlugin() {
             val armorStand = world.spawnEntity(loc, EntityType.ARMOR_STAND) as ArmorStand
             armorStand.setArms(true)
             armorStand.setBasePlate(false)
-            armorStand.equipment!!.boots = when(place) {
+            armorStand.equipment.setBoots(when(place) {
                 1 -> ItemStack(Material.GOLDEN_BOOTS)
                 2 -> ItemStack(Material.IRON_BOOTS)
                 3 -> ItemStack(Material.LEATHER_BOOTS)
                 else -> null
-            }
-            armorStand.equipment!!.leggings = when(place) {
+            })
+            armorStand.equipment.setLeggings(when(place) {
                 1 -> ItemStack(Material.GOLDEN_LEGGINGS)
                 2 -> ItemStack(Material.IRON_LEGGINGS)
                 3 -> ItemStack(Material.LEATHER_LEGGINGS)
                 else -> null
-            }
-            armorStand.equipment!!.chestplate = when(place) {
+            })
+            armorStand.equipment.setChestplate(when(place) {
                 1 -> ItemStack(Material.GOLDEN_CHESTPLATE)
                 2 -> ItemStack(Material.IRON_CHESTPLATE)
                 3 -> ItemStack(Material.LEATHER_CHESTPLATE)
                 else -> null
-            }
+            })
             val head = ItemStack(Material.PLAYER_HEAD)
             val meta = head.itemMeta as SkullMeta
             meta.owningPlayer = Bukkit.getOfflinePlayer(playerUUID)
             head.itemMeta = meta
-            armorStand.equipment!!.helmet = head
+            armorStand.equipment.setHelmet(head)
             val color = when(place) {
                 1 -> "yellow"
                 2 -> "gray"
                 3 -> "gold"
                 else -> "dark_aqua"
             }
-            armorStand.customName = BukkitComponentSerializer.legacy().serialize(TextFormatter.format("<$color><dark_gray>[</dark_gray>$place<dark_gray>]</dark_gray> ${Bukkit.getOfflinePlayer(playerUUID).name!!}  ${top.wins} ${top.loses} ${top.topRace?.toTime()}</$color>"))
+            armorStand.customName(TextFormatter.format("<$color><dark_gray>[</dark_gray>$place<dark_gray>]</dark_gray> ${Bukkit.getOfflinePlayer(playerUUID).name!!}  ${top.wins} ${top.loses} ${top.topRace?.toTime()}</$color>"))
             armorStand.isCustomNameVisible = true
             NPCs.add(armorStand)
 
@@ -166,9 +155,9 @@ class SDBoat : JavaPlugin() {
         while ( Database.startedRaceMaps.isNotEmpty()) {
             try {
                 Database.startedRaceMaps.toList().forEach { it.stop() }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 logger.warning("Problems with disabling")
-                Thread.sleep(300)
+                e.printStackTrace()
             }
         }
         NPCs.forEach { it.remove() }

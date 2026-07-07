@@ -3,7 +3,6 @@ package ru.batr.sdboat.command
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Player
-import ru.batr.sdboat.SDBoat.Companion.adventure
 import ru.batr.sdboat.SDBoat.Companion.mainConfig
 import ru.batr.sdboat.SDBoat.Companion.sendMessagePr
 import ru.batr.sdboat.database.Database
@@ -27,37 +26,44 @@ object ManageCommand {
                         action {
                             if (Bukkit.getWorld(world) == null) sender.sendMessagePr("<red>Мир $world не найден!</red>")
                         }
-                        twoCoordinates {
-                            val start by this
+                        inputInt {
+                            val rounds by this
                             twoCoordinates {
-                                val end by this
+                                val start by this
                                 twoCoordinates {
-                                    val finishStart by this
+                                    val end by this
                                     twoCoordinates {
-                                        val finishEnd by this
-                                        lastAction {
-                                            if (
-                                                Database.addRaceMap(
-                                                    RaceMap(
-                                                        name,
-                                                        world,
-                                                        SimpleCoordinates(start[0], start[1]),
-                                                        SimpleCoordinates(end[0], end[1]),
-                                                        SimpleCoordinates(finishStart[0], finishStart[1]),
-                                                        SimpleCoordinates(finishEnd[0], finishEnd[1])
+                                        val finishStart by this
+                                        twoCoordinates {
+                                            val finishEnd by this
+                                            lastAction {
+                                                if (rounds < 1) {
+                                                    sender.sendMessagePr("<red>Количество кругов не может быть меньше единицы")
+                                                    return@lastAction
+                                                }
+                                                if (
+                                                    Database.addRaceMap(
+                                                        RaceMap(
+                                                            name,
+                                                            world,
+                                                            rounds,
+                                                            SimpleCoordinates(start[0], start[1]),
+                                                            SimpleCoordinates(end[0], end[1]),
+                                                            SimpleCoordinates(finishStart[0], finishStart[1]),
+                                                            SimpleCoordinates(finishEnd[0], finishEnd[1])
+                                                        )
                                                     )
-                                                )
-                                            ) {
-                                                sender.sendMessagePr("<green>Карта успешно создана!</green>")
-                                            } else {
-                                                sender.sendMessagePr("<red>Такая карта уже существует!</red>")
+                                                ) {
+                                                    sender.sendMessagePr("<green>Карта успешно создана!</green>")
+                                                } else {
+                                                    sender.sendMessagePr("<red>Такая карта уже существует!</red>")
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-
                     }
                 }
                 lastAction {
@@ -134,6 +140,16 @@ object ManageCommand {
                                         raceMap.update()
                                         sender.sendMessagePr("<green>Мир успешно изменён!</green>")
                                     }
+                                }
+                            }
+                        }
+                        arg("rounds") {
+                            inputInt {
+                                val rounds by this
+                                lastAction {
+                                    raceMap.rounds = rounds
+                                    raceMap.update()
+                                    sender.sendMessagePr("<green>Мир успешно изменён!</green>")
                                 }
                             }
                         }
@@ -242,7 +258,7 @@ object ManageCommand {
 
                                 raceMap.top1Location = +sender.location
                                 raceMap.update()
-                                adventure.sender(sender).sendMessagePr("<green>Локация успешно изменена!</green>")
+                                sender.sendMessagePr("<green>Локация успешно изменена!</green>")
 
                             }
                         }
@@ -255,7 +271,7 @@ object ManageCommand {
 
                                 raceMap.top2Location = +sender.location
                                 raceMap.update()
-                                adventure.sender(sender).sendMessagePr("<green>Локация успешно изменена!</green>")
+                                sender.sendMessagePr("<green>Локация успешно изменена!</green>")
 
                             }
                         }
@@ -268,7 +284,7 @@ object ManageCommand {
 
                                 raceMap.top3Location = +sender.location
                                 raceMap.update()
-                                adventure.sender(sender).sendMessagePr("<green>Локация успешно изменена!</green>")
+                                sender.sendMessagePr("<green>Локация успешно изменена!</green>")
 
                             }
                         }
@@ -281,7 +297,7 @@ object ManageCommand {
 
                                 raceMap.top1TimeLocation = +sender.location
                                 raceMap.update()
-                                adventure.sender(sender).sendMessagePr("<green>Локация успешно изменена!</green>")
+                                sender.sendMessagePr("<green>Локация успешно изменена!</green>")
 
                             }
                         }
@@ -294,7 +310,7 @@ object ManageCommand {
 
                                 raceMap.top2TimeLocation = +sender.location
                                 raceMap.update()
-                                adventure.sender(sender).sendMessagePr("<green>Локация успешно изменена!</green>")
+                                sender.sendMessagePr("<green>Локация успешно изменена!</green>")
 
                             }
                         }
@@ -307,7 +323,7 @@ object ManageCommand {
 
                                 raceMap.top3TimeLocation = +sender.location
                                 raceMap.update()
-                                adventure.sender(sender).sendMessagePr("<green>Локация успешно изменена!</green>")
+                                sender.sendMessagePr("<green>Локация успешно изменена!</green>")
 
                             }
                         }
@@ -348,7 +364,7 @@ object ManageCommand {
 
                                     raceMap.positionsList.add(+sender.location)
                                     raceMap.update()
-                                    adventure.sender(sender).sendMessagePr("<green>Локация успешно добавлена!</green>")
+                                    sender.sendMessagePr("<green>Локация успешно добавлена!</green>")
 
                                 }
                             }
@@ -393,7 +409,7 @@ object ManageCommand {
 
                                     raceMap.checkpoints.add(+sender.location)
                                     raceMap.update()
-                                    adventure.sender(sender).sendMessagePr("<green>Локация успешно добавлена!</green>")
+                                    sender.sendMessagePr("<green>Локация успешно добавлена!</green>")
 
                                 }
                             }
@@ -498,6 +514,11 @@ object ManageCommand {
                         arg("world") {
                             lastAction {
                                 sender.sendMessagePr(raceMap.world)
+                            }
+                        }
+                        arg("rounds") {
+                            lastAction {
+                                sender.sendMessagePr(raceMap.rounds.toString())
                             }
                         }
                         arg("start") {

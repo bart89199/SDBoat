@@ -3,13 +3,15 @@ package ru.batr.sdboat.command
 import TextFormatter
 import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.text.Component
+import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 import org.bukkit.command.PluginCommand
 import org.bukkit.command.TabExecutor
+import org.bukkit.entity.Player
 import ru.batr.sdboat.SDBoat
-import ru.batr.sdboat.SDBoat.Companion.adventure
-import ru.batr.sdboat.SDBoat.Companion.sendMessage
+import kotlin.collections.plus
+import kotlin.collections.toMutableList
 import kotlin.reflect.KProperty
 
 @DslMarker
@@ -37,6 +39,7 @@ fun interface Action {
      */
     fun execute(commandData: CommandData): Boolean
 }
+
 //TODO rewrite
 fun interface TabAction : Action
 
@@ -181,7 +184,7 @@ abstract class AbstractInputArgument<T>(
         val newArgs = commandData.curArgs.toMutableList()
         if (newArgs.isEmpty()) throw IllegalCommandArgumentException()
         if (openSeparator == " ") {
-            if (closeSeparator == " ") return convert(newArgs[0]) to commandData.copy(curArgs = newArgs.drop(1))
+            if (closeSeparator == " ") return convert(commandData, newArgs[0]) to commandData.copy(curArgs = newArgs.drop(1))
         } else {
             if (!newArgs[0].startsWith(openSeparator)) throw IllegalCommandArgumentException()
             newArgs[0] = newArgs[0].removePrefix(openSeparator)
@@ -190,7 +193,7 @@ abstract class AbstractInputArgument<T>(
         newArgs.forEachIndexed { i, str ->
             if (str.endsWith(closeSeparator)) {
                 builder.append(str.removeSuffix(closeSeparator))
-                return convert(builder.toString()) to commandData.copy(
+                return convert(commandData, builder.toString()) to commandData.copy(
                     curArgs = newArgs.subList(i + 1, newArgs.size)
                 )
             } else builder.append("$str ")
@@ -201,7 +204,7 @@ abstract class AbstractInputArgument<T>(
     /**
      * Convert [String] to [T]
      */
-    abstract fun convert(input: String): T
+    abstract fun convert(commandData: CommandData, input: String): T
 }
 
 class InputArgument<T>(
@@ -209,10 +212,10 @@ class InputArgument<T>(
     closeSeparator: String = openSeparator,
     ignoringInnerExit: Boolean = false,
     onExceptionAction: Action? = null,
-    var convertor: (String) -> T,
+    var convertor: (CommandData, String) -> T,
     var onTab: CommandData.() -> MutableList<String>
 ) : AbstractInputArgument<T>(openSeparator, closeSeparator, ignoringInnerExit, onExceptionAction) {
-    override fun convert(input: String): T = convertor(input)
+    override fun convert(commandData: CommandData, input: String): T = convertor(commandData, input)
 
     override fun tabList(commandData: CommandData): MutableList<String> = onTab(commandData)
 }
@@ -228,9 +231,9 @@ abstract class AbstractInputListArgument<T>(
     var sortAdvicesWithTyped: Boolean = true,
 ) : AbstractInputArgument<List<T>>(openSeparator, closeSeparator, ignoringInnerExit, onExceptionAction) {
 
-    override fun convert(input: String): List<T> =
+    override fun convert(commandData: CommandData, input: String): List<T> =
         input.split(*separators.toTypedArray()).map {
-            convertElement(it)
+            convertElement(commandData,it)
         }.also { list -> argumentRange?.let { if (list.size !in it) throw IllegalCommandArgumentException() } }
 
     override fun tabList(commandData: CommandData): MutableList<String> {
@@ -242,7 +245,10 @@ abstract class AbstractInputListArgument<T>(
             if (newArgs.isEmpty()) return tabListContent(commandData)
             if (openSeparator == " ") {
                 if (closeSeparator == " ")
-                    return tabListContent(commandData, commandData.curArgs[0]).filter { it.startsWith(commandData.curArgs[0]) }.toMutableList()
+                    return tabListContent(
+                        commandData,
+                        commandData.curArgs[0]
+                    ).filter { it.startsWith(commandData.curArgs[0]) }.toMutableList()
             } else {
                 if (!newArgs[0].startsWith(openSeparator)) return tabListContent(commandData).map { openSeparator + it }
                     .toMutableList().also { if (it.isEmpty()) return mutableListOf(openSeparator) }
@@ -260,7 +266,7 @@ abstract class AbstractInputListArgument<T>(
             val args = builder.split(*separators.toTypedArray()).toMutableList()
             args.forEachIndexed { i, str ->
                 if (i + 1 != args.size) try {
-                    convertElement(str)
+                    convertElement(commandData, str)
                 } catch (e: IllegalCommandArgumentException) {
                     return mutableListOf("Введён неверный тип!")
                 }
@@ -287,7 +293,7 @@ abstract class AbstractInputListArgument<T>(
     }
 
     abstract fun tabListContent(commandData: CommandData, lastArg: String? = null): MutableList<String>
-    abstract fun convertElement(string: String): T
+    abstract fun convertElement(commandData: CommandData, string: String): T
 }
 
 class InputListArgument<T>(
@@ -299,7 +305,7 @@ class InputListArgument<T>(
     onExceptionAction: Action? = null,
     removeArgAdviceIfUsed: Boolean = false,
     sortAdvicesWithTyped: Boolean = true,
-    var convertor: (String) -> T,
+    var convertor: (CommandData, String) -> T,
     var onTab: CommandData.(lastArg: String?) -> MutableList<String>,
 ) : AbstractInputListArgument<T>(
     openSeparator,
@@ -311,8 +317,9 @@ class InputListArgument<T>(
     removeArgAdviceIfUsed,
     sortAdvicesWithTyped
 ) {
-    override fun convertElement(string: String): T = convertor(string)
-    override fun tabListContent(commandData: CommandData, lastArg: String?): MutableList<String> = onTab(commandData, lastArg)
+    override fun convertElement(commandData: CommandData, string: String): T = convertor(commandData, string)
+    override fun tabListContent(commandData: CommandData, lastArg: String?): MutableList<String> =
+        onTab(commandData, lastArg)
 }
 
 
@@ -341,9 +348,9 @@ class SDCommand(val name: String) : TabExecutor, ActionsHolder {
         sender: CommandSender,
         command: Command,
         label: String,
-        args: Array<out String>?
+        args: Array<out String>
     ): MutableList<String> {
-        val argsList = args?.toList() ?: emptyList()
+        val argsList = args.toList()
         val commandData = CommandData(sender, command, label, argsList, argsList)
         val list = ArrayList<String>()
         for (action in actions) {
@@ -361,9 +368,9 @@ class SDCommand(val name: String) : TabExecutor, ActionsHolder {
         sender: CommandSender,
         command: Command,
         label: String,
-        args: Array<out String>?
+        args: Array<out String>
     ): Boolean {
-        val argsList = args?.toList() ?: emptyList()
+        val argsList = args.toList()
         for (action in actions) {
             if (action is TabAction) continue
             if (action.execute(CommandData(sender, command, label, argsList, argsList))) break
@@ -418,37 +425,55 @@ fun ActionsHolder.arg(
 // TODO Add exception handle support in onExceptionAction
 // TODO Advice as list order
 
-val toString = { input: String ->
+val toString = { commandData: CommandData, input: String ->
     if (input.isBlank()) throw IllegalCommandArgumentException()
     input
 }
-val toComponent = { input: String ->
+val toComponent = { commandData: CommandData, input: String ->
     TextFormatter.format(input)
 }
-val toInt = { input: String ->
+val toInt = { commandData: CommandData, input: String ->
     try {
         input.toInt()
     } catch (e: NumberFormatException) {
         throw IllegalCommandArgumentException()
     }
 }
-val toDouble = { input: String ->
+val toDouble = { commandData: CommandData, input: String ->
     try {
         input.toDouble()
     } catch (e: NumberFormatException) {
         throw IllegalCommandArgumentException()
     }
 }
-val toBoolean = convertor@{ input: String ->
+val toBoolean = convertor@{ commandData: CommandData, input: String ->
     input.replace("true", "1").replace("да", "0").replace("false", "0").replace("нет", "0")
         .also { if (it == "0") return@convertor false }.also { if (it == "1") return@convertor true }
     throw IllegalCommandArgumentException()
 }
+val toPlayer = { commandData: CommandData, input: String ->
+    try {
+        Bukkit.getPlayer(input)!!
+    }catch (e: Exception) {
+        throw IllegalCommandArgumentException(TextFormatter.format(e.message?:""))
+    }
+}
+
+val toPlayerList = { commandData: CommandData, input: String ->
+    try {
+        Bukkit.selectEntities(commandData.sender, input).filterIsInstance<Player>()
+    }catch (e: Exception) {
+        throw IllegalCommandArgumentException(TextFormatter.format(e.message?:""))
+    }
+}
 
 operator fun String.unaryPlus(): CommandData.() -> MutableList<String> = { mutableListOf(this@unaryPlus) }
-operator fun String.unaryMinus(): CommandData.(lastArg: String?) -> MutableList<String> = { mutableListOf(this@unaryMinus) }
+operator fun String.unaryMinus(): CommandData.(lastArg: String?) -> MutableList<String> =
+    { mutableListOf(this@unaryMinus) }
+
 operator fun Iterable<String>.unaryPlus(): CommandData.() -> MutableList<String> = { this@unaryPlus.toMutableList() }
-operator fun Iterable<String>.unaryMinus(): CommandData.(lastArg: String?) -> MutableList<String> = { this@unaryMinus.toMutableList() }
+operator fun Iterable<String>.unaryMinus(): CommandData.(lastArg: String?) -> MutableList<String> =
+    { this@unaryMinus.toMutableList() }
 
 fun <T> ActionsHolder.input(
     onTab: CommandData.() -> MutableList<String> = +"[ввод]",
@@ -456,7 +481,7 @@ fun <T> ActionsHolder.input(
     closeSeparator: String = openSeparator,
     onExceptionAction: Action? = null,
     ignoringInnerExit: Boolean = false,
-    convertor: (String) -> T,
+    convertor: (CommandData, String) -> T,
     init: InputArgument<T>.() -> Unit
 ) {
     val argument = InputArgument(openSeparator, closeSeparator, ignoringInnerExit, onExceptionAction, convertor, onTab)
@@ -569,7 +594,7 @@ fun <T> ActionsHolder.inputList(
     ignoringInnerExit: Boolean = false,
     removeArgAdviceIfUsed: Boolean = false,
     sortAdvicesWithTyped: Boolean = true,
-    convertor: (String) -> T,
+    convertor: (CommandData, String) -> T,
     init: InputListArgument<T>.() -> Unit
 ) {
     val argument = InputListArgument(
@@ -720,6 +745,63 @@ fun ActionsHolder.inputBooleanList(
         removeArgAdviceIfUsed = removeArgAdviceIfUsed,
         sortAdvicesWithTyped = sortAdvicesWithTyped,
         convertor = toBoolean,
+        init = init
+    )
+}
+
+fun ActionsHolder.inputPlayersList(
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = {
+        (Bukkit.getOnlinePlayers().map { it.toString() }).toMutableList()
+    },
+    argumentRange: IntRange? = null,
+    openSeparator: String = "[",
+    closeSeparator: String = "]",
+    separators: MutableList<String> = mutableListOf(", ", ","),
+    onExceptionAction: Action? = null,
+    ignoringInnerExit: Boolean = false,
+    removeArgAdviceIfUsed: Boolean = true,
+    sortAdvicesWithTyped: Boolean = true,
+    init: InputListArgument<Player>.() -> Unit
+) {
+    inputList(
+        onTab = onTab,
+        openSeparator = openSeparator,
+        closeSeparator = closeSeparator,
+        separators = separators,
+        argumentRange = argumentRange,
+        onExceptionAction = onExceptionAction,
+        ignoringInnerExit = ignoringInnerExit,
+        removeArgAdviceIfUsed = removeArgAdviceIfUsed,
+        sortAdvicesWithTyped = sortAdvicesWithTyped,
+        convertor = toPlayer,
+        init = init
+    )
+}
+fun ActionsHolder.inputPlayersListSelector(
+    onTab: CommandData.(lastArg: String?) -> MutableList<String> = {
+        (Bukkit.getOnlinePlayers().map { it.name } + listOf("@a", "@p", "@r")).toMutableList()
+    },
+    argumentRange: IntRange? = null,
+    openSeparator: String = "[",
+    closeSeparator: String = "]",
+    separators: MutableList<String> = mutableListOf(", ", ","),
+    onExceptionAction: Action? = null,
+    ignoringInnerExit: Boolean = false,
+    removeArgAdviceIfUsed: Boolean = true,
+    sortAdvicesWithTyped: Boolean = true,
+    init: InputListArgument<List<Player>>.() -> Unit
+) {
+    inputList(
+        onTab = onTab,
+        openSeparator = openSeparator,
+        closeSeparator = closeSeparator,
+        separators = separators,
+        argumentRange = argumentRange,
+        onExceptionAction = onExceptionAction,
+        ignoringInnerExit = ignoringInnerExit,
+        removeArgAdviceIfUsed = removeArgAdviceIfUsed,
+        sortAdvicesWithTyped = sortAdvicesWithTyped,
+        convertor = toPlayerList,
         init = init
     )
 }

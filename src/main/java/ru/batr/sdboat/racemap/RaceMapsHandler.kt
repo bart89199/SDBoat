@@ -1,16 +1,22 @@
 package ru.batr.sdboat.racemap
 
 import org.bukkit.*
+import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
+import org.bukkit.entity.Vehicle
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockEvent
+import org.bukkit.event.block.BlockFadeEvent
 import org.bukkit.event.block.BlockFormEvent
 import org.bukkit.event.block.BlockFromToEvent
+import org.bukkit.event.entity.EntityPickupItemEvent
+import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import org.bukkit.event.player.PlayerPickupItemEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.event.vehicle.VehicleExitEvent
@@ -49,19 +55,24 @@ class RaceMapsHandler : Listener {
     }
 
     @EventHandler
+    fun BlockFadeEvent.onIceMelt() {
+        for (raceMap in Database.raceMaps) {
+            if (block.location.world.name == raceMap.world && block.location in raceMap.start to raceMap.end) {
+                isCancelled = true
+                return
+            }
+        }
+    }
+
+    @EventHandler
     fun VehicleEnterEvent.onBoatEnter() {
+
         vehicle.passengers.filterNotNull().forEach { player ->
             if (player is Player) {
                 val playerUUID = player.uniqueId
                 if (Database.executingPlayers.contains(playerUUID)) return
                 Bukkit.getScheduler().runTaskLater(SDBoat.instance, Runnable {
-                    for (raceMap in Database.startedRaceMaps) {
-                        if (raceMap.players.contains(playerUUID)) {
-                            raceMap.kill(playerUUID, vehicle)
-                            return@Runnable
-                        }
-                    }
-                    for (raceMap in Database.waitingMaps) {
+                    for (raceMap in (Database.startedRaceMaps + Database.waitingMaps)) {
                         if (raceMap.players.contains(playerUUID)) {
                             raceMap.kill(playerUUID, vehicle)
                             return@Runnable
@@ -77,52 +88,72 @@ class RaceMapsHandler : Listener {
         }
     }
 
+    fun onBoatLeave(player: Player, vehicle: Entity? = player.vehicle) {
+        val playerUUID = player.uniqueId
+        if (Database.executingPlayers.contains(playerUUID)) return
+        Database.executingPlayers.add(playerUUID)
+        Bukkit.getScheduler().runTaskLater(SDBoat.instance, Runnable {
+            Database.executingPlayers.remove(playerUUID)
+            for (raceMap in (Database.startedRaceMaps + Database.waitingMaps)) {
+                if (raceMap.players.contains(playerUUID)) {
+                    raceMap.kill(playerUUID, vehicle)
+                    return@Runnable
+                }
+            }
+        }, 10)
+    }
+
+    @EventHandler
+    fun PlayerDeathEvent.onDeath() {
+        synchronized(SDBoat.instance) {
+            val playerUUID = player.uniqueId
+            for (raceMap in (Database.startedRaceMaps + Database.waitingMaps)) {
+                if (raceMap.players.contains(playerUUID)) {
+//                    val vehicle = player.vehicle
+//                    vehicle?.remove()
+                    this.isCancelled = true
+                    raceMap.kill(playerUUID)
+                    return
+                }
+            }
+        }
+    }
+
+    //CHECK!!!!!!!!!!!!!!
     @EventHandler(priority = EventPriority.HIGH)
     fun VehicleExitEvent.onBoatLeave() {
         synchronized(SDBoat.instance) {
-            val player = exited
-            if (player is Player) {
-                val playerUUID = player.uniqueId
-                if (Database.executingPlayers.contains(playerUUID)) return
-                Bukkit.getScheduler().runTaskLater(SDBoat.instance, Runnable {
-                    for (raceMap in Database.startedRaceMaps) {
-                        if (raceMap.players.contains(playerUUID)) {
-                            raceMap.kill(playerUUID, vehicle)
-                            return@Runnable
-                        }
+            val playerUUID = exited.uniqueId
+            for (raceMap in (Database.startedRaceMaps + Database.waitingMaps)) {
+                if (raceMap.players.contains(playerUUID)) {
+                    val player = exited
+                    vehicle.remove()
+                    if (player is Player) {
+                        onBoatLeave(player)
                     }
-                    for (raceMap in Database.waitingMaps) {
-                        if (raceMap.players.contains(playerUUID)) {
-                            raceMap.kill(playerUUID, vehicle)
-                            return@Runnable
-                        }
-                    }
-                    for (raceMap in Database.raceMaps) {
-                        if (player.location in raceMap.start to raceMap.end) {
-                            vehicle.remove()
-                        }
-                    }
-                }, 10)
-
+                }
             }
         }
     }
 
     @EventHandler
     fun PlayerDropItemEvent.onDrop() {
-        for (raceMap in Database.startedRaceMaps) {
-            if (raceMap.players.contains(player.uniqueId)) {
-                isCancelled = true
-            }
-        }
-        for (raceMap in Database.waitingMaps) {
+        for (raceMap in Database.startedRaceMaps + Database.waitingMaps) {
             if (raceMap.players.contains(player.uniqueId)) {
                 isCancelled = true
             }
         }
     }
+    @EventHandler
+    fun EntityPickupItemEvent.onPickup() {
+        for (raceMap in Database.startedRaceMaps + Database.waitingMaps) {
+            if (raceMap.players.contains(entity.uniqueId)) {
+                isCancelled = true
+            }
+        }
+    }
 
-    @EventHandler(priority = EventPriority.HIGH)
+    @EventHandler
     fun PlayerInteractEvent.onItemUse() {
         val item = this.item
         for (raceMap in Database.startedRaceMaps) {
@@ -150,12 +181,15 @@ class RaceMapsHandler : Listener {
             val playerUUID = player.uniqueId
             if (Database.executingPlayers.contains(playerUUID)) return
             for (raceMap in Database.waitingMaps) {
-                if (raceMap.players.contains(playerUUID)) isCancelled = true
+                if (raceMap.players.contains(playerUUID)) {
+                    isCancelled = true
+                    return
+                }
             }
             for (raceMap in Database.startedRaceMaps.toList()) {
                 if (raceMap.players.contains(playerUUID)) {
                     if (player.location in raceMap.raceMap.finishStart to raceMap.raceMap.finishEnd) {
-                        raceMap.playerFinished(playerUUID)
+                        raceMap.playerFinishRound(playerUUID)
                     }
                     if (player.location !in raceMap.raceMap.start to raceMap.raceMap.end) {
                         player.sendMessagePr(mainConfig.mapLeave)
@@ -165,9 +199,9 @@ class RaceMapsHandler : Listener {
                         if (player.location in -(-checkpoint)..mainConfig.checkpointRange) {
                             if (+raceMap.checkpoints[playerUUID]!! != checkpoint) {
                                 raceMap.checkpoints[playerUUID] = +checkpoint
-                                player.world.spawnParticle(Particle.FIREWORKS_SPARK, player.location, 10)
+                                player.world.spawnParticle(Particle.FIREWORK, player.location, 10)
                                 player.world.spawnParticle(
-                                    Particle.FIREWORKS_SPARK,
+                                    Particle.FIREWORK,
                                     player.location.clone().add(0.0, 1.0, 0.0),
                                     30
                                 )
@@ -180,9 +214,9 @@ class RaceMapsHandler : Listener {
                             player.inventory.addItem(bonus.item)
                             raceMap.bonuses.remove(entity to bonus)
                             entity.remove()
-                            player.world.spawnParticle(Particle.FIREWORKS_SPARK, player.location, 10)
+                            player.world.spawnParticle(Particle.FIREWORK, player.location, 10)
                             player.world.spawnParticle(
-                                Particle.FIREWORKS_SPARK,
+                                Particle.FIREWORK,
                                 player.location.clone().add(0.0, 1.0, 0.0),
                                 30
                             )

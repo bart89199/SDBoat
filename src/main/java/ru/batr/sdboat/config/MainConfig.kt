@@ -83,6 +83,7 @@ class MainConfig : Config("config.yml") {
         "checkPointMessage",
         "<aqua>Вы прошли чекпоинт!</aqua>",
     )
+
     fun finishMessage(place: Int, time: String) = Container.ConfigComponentContainer(
         this,
         "finishMessage",
@@ -90,6 +91,18 @@ class MainConfig : Config("config.yml") {
         Placeholder.component("place", TextFormatter.format(place.toString())),
         Placeholder.component("time", TextFormatter.format(time)),
     ).value
+
+    fun finishRoundMessage(curRound: Int, roundsAmount: Int, roundTime: String, time: String) =
+        Container.ConfigComponentContainer(
+            this,
+            "finishRoundMessage",
+            "<aqua>Круг <gold><curround></gold><light_gray> / <light_gray><gold><roundsamount></gold> пройден!</aqua>\nВремя прохождения круга: <aqua><roundtime></aqua>\n Общее время: <aqua><time></aqua>",
+            Placeholder.component("curround", TextFormatter.format(curRound.toString())),
+            Placeholder.component("roundsamount", TextFormatter.format(roundsAmount.toString())),
+            Placeholder.component("roundtime", TextFormatter.format(roundTime)),
+            Placeholder.component("time", TextFormatter.format(time)),
+        ).value
+
     val maxRaceTime by Container.ConfigContainer(
         this,
         "maxRaceTime",
